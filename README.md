@@ -62,7 +62,7 @@ May need **root** privilege to run for libvirtd connection
 
     * xmlns:qemu in domain
 
-        <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+            <domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
 
     * hugepage as backend
 
@@ -74,12 +74,12 @@ May need **root** privilege to run for libvirtd connection
 
     * QEMU binary
 
-        <emulator>/images/testvfe/sw/qemu/bin/x86_64-softmmu/qemu-system-x86_64</emulator>
+            <emulator>/images/testvfe/sw/qemu/bin/x86_64-softmmu/qemu-system-x86_64</emulator>
 
     * Memory as shared
-
-        <cpu mode='host-model' check='partial'>
-          <numa>
-            <cell id='0' cpus='0-3' memory='8388608' unit='KiB' memAccess='shared'/>
-          </numa>
-        </cpu>
+    
+            <cpu mode='host-model' check='partial'>
+              <numa>
+                <cell id='0' cpus='0-3' memory='8388608' unit='KiB' memAccess='shared'/>
+              </numa>
+            </cpu>
