@@ -1,0 +1,5 @@
+<disk type='vhostuser' device='disk' snapshot='no'>
+     <driver name='qemu' type='raw' page_per_vq='on'/>
+     <source type='unix' path='/tmp/vfe-blk0' mode='server'/>
+     <target dev='vda' bus='virtio'/>
+</disk>

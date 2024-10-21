@@ -11,6 +11,7 @@ import argparse
 from xml.dom import minidom
 
 # https://libvirt-python.readthedocs.io
+# https://libvirt.gitlab.io/libvirt-appdev-guide-python/index.html
 
 __version__='v0.1'
 
@@ -28,8 +29,11 @@ class Libvirt:
     def getActiveDoms(self):
         return self.active_doms;
 
-    def getDomainXML(self, dom):
+    def getDomainXMLs(self, dom):
         return dom.XMLDesc()
+
+    def getDomainXML(self, name):
+        return self.conn.lookupByName(name).XMLDesc()
 
 class VhostC:
     decoder = json.JSONDecoder()
@@ -147,8 +151,8 @@ class VhostdHelp:
     def __init__(self):
         self.devices = {}
         self.all_vfs = {}
-        vhostc = VhostC("localhost",'12190')
-        self.all_pfs = vhostc.getPFs()
+        self.vhostc = VhostC("localhost",'12190')
+        self.all_pfs = self.vhostc.getPFs()
         if not self.all_pfs:
             raise SystemExit("No PF added to vhostd")
 
@@ -156,7 +160,7 @@ class VhostdHelp:
         for pf in self.all_pfs:
             info = PCIinfo.getPFInfo(pf)
             self.devices[pf] = info
-            vf_list = vhostc.getVFs(pf)
+            vf_list = self.vhostc.getVFs(pf)
             for vf in vf_list:
                 vf_name = vf['vf']
                 vf['pf'] = pf
@@ -222,7 +226,7 @@ class VhostdHelp:
         result = True
         print()
         for name,dom in self.doms.items():
-            xml = self.virt.getDomainXML(dom)
+            xml = self.virt.getDomainXMLs(dom)
             if not self.__vm_vhostd_uuid_match_verify_one(xml):
                 print(f"[x] UUID check FAIL for {name}")
                 result = False
@@ -235,11 +239,14 @@ class VhostdHelp:
 
         print("\n== PF  ==")
         for d in self.devices.values():
-            print(json.dumps(d, indent=2))
+            print(f"name:           {d['name']}")
+            print(f"type:           {d['type']}")
+            print(f"sriov_totalvfs: {d['sriov_totalvfs']}")
+            print(f"sriov_numvfs:   {d['sriov_numvfs']}\n")
 
         d = dict(self.all_vfs)
         for name,dom in self.doms.items():
-            xml = self.virt.getDomainXML(dom)
+            xml = self.virt.getDomainXMLs(dom)
             vsockets, vmname = self.get_vsocket_from_xml(xml)
             print(f"\nVM: {vmname}")
             for vsock in vsockets:
@@ -255,7 +262,72 @@ class VhostdHelp:
         for vsock, vf in d.items():
             print(f"{vsock}: {vf['vf']}, {vf['vm_uuid']}, "
                   f"vfid={vf['vfid']}, configured={vf['configured']}, pf={vf['pf']}")
+        print()
 
+    @classmethod
+    def __get_tag(cls, xmlroot, tagName):
+        if xmlroot is None:
+            return None
+        tags = xmlroot.getElementsByTagName(tagName)
+        if not tags:
+            return None
+        return tags[0]
+
+    @classmethod
+    def __get_tag_attrs(cls, xmlroot, tagName, attrName):
+        if not xmlroot:
+            return ['']
+        tags = xmlroot.getElementsByTagName(tagName)
+        if not tags:
+            return ['']
+        attrs = []
+        for t in tags:
+           attrs.append(t.getAttribute(attrName))
+        return attrs
+
+    @classmethod
+    def __get_tag_values(cls, xmlroot, tagName):
+        if not xmlroot:
+            return ['']
+        tags = xmlroot.getElementsByTagName(tagName)
+        values = []
+        for t in tags:
+           values.append(t.firstChild.data)
+        return values
+
+    @classmethod
+    def check_xml_for_vdpa(cls, xml):
+        xml = minidom.parseString(xml)
+        vmname = xml.getElementsByTagName("name")[0].firstChild.data
+        print(f"\n== {vmname} ==\n")
+
+        l = cls.__get_tag_attrs(xml, 'domain', 'xmlns:qemu')
+        if l[0]:
+            print(f'[/] xmlns:qemu {l[0]}')
+        else:
+            print(f'[-] No xmlns:qemu in tag domain? you can not use <qemu:commandline>')
+
+        memoryBacking = cls.__get_tag(xml, 'memoryBacking')
+        hugepages = cls.__get_tag(memoryBacking, 'hugepages')
+        l = cls.__get_tag_attrs(hugepages, 'page', 'size')
+        if l[0]:
+            print(f'[/] hugepage size {l[0]}')
+        else:
+            print(f'[-] Better use hugepage for performance')
+
+        l = cls.__get_tag_values(xml, 'emulator')
+        if l[0]:
+            print(f'[/] QEMU binary: {l[0]}')
+        else:
+            print(f'[-] Use default qemu?')
+
+        cpu = cls.__get_tag(xml, 'cpu')
+        numa = cls.__get_tag(xml, 'numa')
+        l = cls.__get_tag_attrs(numa, 'cell', 'memAccess')
+        if l[0]:
+            print(f'[/] Set numa memory as {l[0]}')
+        else:
+            print(f'[x] numa memory must set as shared, please fix !')
         print()
 
 if __name__ == '__main__':
@@ -265,10 +337,21 @@ if __name__ == '__main__':
         )
 
     parser.add_argument('-d', '--dump', action='store_true', dest='dump', help="Dump info")
+    parser.add_argument('-i', '--xmlinfo', action='store_true', dest='xmlinfo', help="VM xml info")
+    parser.add_argument('-n', '--name', dest='name', help="VM name")
+    parser.add_argument('-f', '--file', dest='file', help="xml file name")
     args = parser.parse_args()
 
-    vhostd = VhostdHelp()
+    if args.xmlinfo:
+        if args.name:
+            virt = Libvirt()
+            domxml = virt.getDomainXML(args.name)
+        elif args.file:
+             with open(args.file, 'r') as f: domxml = f.read().strip('\n')
+        VhostdHelp.check_xml_for_vdpa(domxml)
+        sys.exit(0)
 
+    vhostd = VhostdHelp()
     if args.dump:
         vhostd.vm_vhostd_dump()
         sys.exit(0)
