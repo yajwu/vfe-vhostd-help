@@ -7,10 +7,10 @@ May need **root** privilege to run for libvirtd connection
 
 ## Dependencies
 
-    sudo pip3 install libvirt-python
+    libvirt-python
 
 
-## How
+## How to use
 
 1. Check if same uuid VFs in vhostd are ALL in SAME VM
 
@@ -83,3 +83,25 @@ May need **root** privilege to run for libvirtd connection
                 <cell id='0' cpus='0-3' memory='8388608' unit='KiB' memAccess='shared'/>
               </numa>
             </cpu>
+      
+## Rebuild and install libvirt-python (python API binding)
+If you are using own build libvirtd instead of OS inbox version. The inbox python3-libvirt may have compatible issue.
+
+1. make sure libvirtd build and install with -Ddocs=enabled
+
+       # depend on OS type, build libvirtd may need do:
+       pip3 uninstall rst2html5
+       pip3 install docutils
+   
+2. Remove inbox python3-libvirt
+
+       sudo rpm -e --nodeps python3-libvirt
+
+3. Clone, build, install libvirt-python
+   
+       git clone git@github.com:libvirt/libvirt-python.git
+       cd libvirt-python
+       git checkout v8.0.0 # match libvirtd version
+       sudo python setup.py install
+   
+
